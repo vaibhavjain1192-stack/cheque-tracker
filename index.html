@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cheque Tracker — Free Edition</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --ink:#16162a;--ink2:#3a3a5c;--muted:#7878a0;--line:#e4e4f0;
+  --surface:#ffffff;--bg:#f2f2f8;
+  --green:#15803d;--green-bg:#dcfce7;--green-border:#86efac;
+  --amber:#92400e;--amber-bg:#fef3c7;--amber-border:#fcd34d;
+  --red:#991b1b;--red-bg:#fee2e2;--red-border:#fca5a5;
+  --blue:#1e3a8a;--blue-bg:#dbeafe;--blue-border:#93c5fd;
+  --accent:#4f46e5;--accent-light:#eef2ff;--accent-border:#c7d2fe;
+  --radius:10px;--radius-sm:6px;
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.6;min-height:100vh}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+
+/* ── Layout ── */
+.shell{display:grid;grid-template-columns:220px 1fr;min-height:100vh}
+.sidebar{background:var(--surface);border-right:0.5px solid var(--line);padding:20px 0;display:flex;flex-direction:column;gap:2px}
+.sidebar-logo{padding:0 16px 16px;border-bottom:0.5px solid var(--line);margin-bottom:8px}
+.sidebar-logo h1{font-size:16px;font-weight:600;color:var(--ink)}
+.sidebar-logo p{font-size:11px;color:var(--muted);margin-top:2px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 16px;cursor:pointer;color:var(--ink2);font-size:13px;font-weight:500;border-left:3px solid transparent;transition:all .15s}
+.nav-item:hover{background:var(--bg);color:var(--ink)}
+.nav-item.active{background:var(--accent-light);color:var(--accent);border-left-color:var(--accent)}
+.nav-item .icon{width:16px;text-align:center;font-size:15px}
+.main{padding:28px;overflow-y:auto}
+
+/* ── Cards ── */
+.card{background:var(--surface);border:0.5px solid var(--line);border-radius:var(--radius);padding:20px;margin-bottom:16px}
+.card-head{font-size:14px;font-weight:600;color:var(--ink);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.page-head{font-size:20px;font-weight:600;margin-bottom:4px}
+.page-sub{font-size:13px;color:var(--muted);margin-bottom:20px}
+
+/* ── Form ── */
+.field{margin-bottom:12px}
+.label{display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}
+input[type=text],input[type=email],input[type=password],input[type=url],select{
+  width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:var(--radius-sm);
+  font-family:inherit;font-size:13px;color:var(--ink);background:var(--bg);outline:none;transition:border .15s
+}
+input:focus,select:focus{border-color:var(--accent);background:#fff}
+.mono{font-family:'SF Mono','JetBrains Mono',monospace;font-size:12px}
+
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:var(--radius-sm);border:none;font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;transition:all .15s}
+.btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{filter:brightness(1.1)}
+.btn-primary:disabled{opacity:.45;cursor:not-allowed}
+.btn-ghost{background:var(--bg);color:var(--ink2);border:1px solid var(--line)}.btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
+.btn-sm{padding:6px 12px;font-size:12px}
+.btn-danger{background:var(--red-bg);color:var(--red);border:1px solid var(--red-border)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spinner{width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite}
+
+/* ── Dropzone ── */
+.dropzone{border:1.5px dashed var(--line);border-radius:var(--radius);padding:36px 20px;text-align:center;cursor:pointer;position:relative;transition:all .2s;background:var(--bg)}
+.dropzone:hover,.dropzone.drag{border-color:var(--accent);background:var(--accent-light)}
+.dropzone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.dropzone .dz-icon{font-size:32px;margin-bottom:8px}
+.dropzone p{font-size:13px;color:var(--muted)}
+.dropzone strong{color:var(--accent)}
+#prev-wrap{display:none;margin-top:14px}
+#prev-img{width:100%;max-height:200px;object-fit:contain;border-radius:var(--radius-sm);border:1px solid var(--line)}
+
+/* ── Result grid ── */
+.rgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.ritem{background:var(--bg);border-radius:var(--radius-sm);padding:10px 13px}
+.ritem .rl{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}
+.ritem .rv{font-size:15px;font-weight:600;font-family:'SF Mono','JetBrains Mono',monospace}
+.full{grid-column:1/-1}
+
+/* ── Log ── */
+.log{background:#0d0d1a;border-radius:var(--radius-sm);padding:12px 14px;margin-top:12px;font-family:'SF Mono','JetBrains Mono',monospace;font-size:11px;color:#9090b8;max-height:120px;overflow-y:auto;line-height:1.9;display:none}
+.log .ok{color:#4ade80}.log .err{color:#f87171}.log .inf{color:#818cf8}
+
+/* ── Badges ── */
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600}
+.badge-green{background:var(--green-bg);color:var(--green)}
+.badge-amber{background:var(--amber-bg);color:var(--amber)}
+.badge-red{background:var(--red-bg);color:var(--red)}
+.badge-blue{background:var(--blue-bg);color:var(--blue)}
+.badge-gray{background:var(--bg);color:var(--muted);border:1px solid var(--line)}
+
+/* ── Table ── */
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:8px 12px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--line)}
+td{padding:11px 12px;border-bottom:0.5px solid var(--bg);color:var(--ink2);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#f8f8fd}
+.mono-td{font-family:'SF Mono','JetBrains Mono',monospace;font-size:12px}
+
+/* ── Reminder cards ── */
+.rem-card{display:flex;align-items:flex-start;gap:14px;padding:14px;border-radius:var(--radius);margin-bottom:10px;border:1px solid}
+.rem-card.urgent{background:var(--red-bg);border-color:var(--red-border)}
+.rem-card.soon{background:var(--amber-bg);border-color:var(--amber-border)}
+.rem-card.ok{background:var(--green-bg);border-color:var(--green-border)}
+.rem-icon{font-size:22px;flex-shrink:0;margin-top:1px}
+.rem-title{font-size:13px;font-weight:600;color:var(--ink)}
+.rem-sub{font-size:12px;color:var(--muted);margin-top:2px}
+
+/* ── Setup stepper ── */
+.stepper{display:flex;flex-direction:column;gap:0}
+.step{display:flex;gap:16px;padding-bottom:24px;position:relative}
+.step:not(:last-child)::before{content:'';position:absolute;left:15px;top:36px;width:1px;bottom:0;background:var(--line)}
+.step-num{width:32px;height:32px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.step-num.done{background:var(--green)}
+.step-body h3{font-size:14px;font-weight:600;color:var(--ink);margin-bottom:5px;margin-top:5px}
+.step-body p,.step-body li{font-size:13px;color:var(--ink2);line-height:1.75}
+.step-body ul{padding-left:16px;margin-top:4px}
+code{background:#1a1a2e;color:#a5b4fc;padding:2px 6px;border-radius:4px;font-family:'SF Mono','JetBrains Mono',monospace;font-size:11px}
+.codeblock{background:#0d0d1a;color:#c8cce8;border-radius:var(--radius-sm);padding:14px;margin-top:8px;font-family:'SF Mono','JetBrains Mono',monospace;font-size:11px;line-height:1.8;overflow-x:auto;white-space:pre;tab-size:2}
+.codeblock .kw{color:#818cf8}.codeblock .str{color:#86efac}.codeblock .fn{color:#fbbf24}.codeblock .cm{color:#4b5580}
+.hint{background:var(--accent-light);border-left:3px solid var(--accent);padding:9px 13px;border-radius:0 var(--radius-sm) var(--radius-sm) 0;font-size:12px;color:#3730a3;margin-bottom:12px}
+.copy-btn{float:right;margin-top:-2px;font-size:11px;padding:3px 9px}
+
+/* ── Free badges row ── */
+.free-stack{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px}
+.free-tile{background:var(--surface);border:0.5px solid var(--line);border-radius:var(--radius);padding:14px;text-align:center}
+.free-tile .ft-icon{font-size:24px;margin-bottom:6px}
+.free-tile .ft-name{font-size:12px;font-weight:600;color:var(--ink)}
+.free-tile .ft-tag{font-size:10px;color:var(--green);font-weight:600;margin-top:2px}
+.divider{height:0.5px;background:var(--line);margin:16px 0}
+.row{display:flex;gap:10px;align-items:flex-end}
+.row .field{flex:1}
+.hidden{display:none!important}
+
+/* ── Stats row ── */
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}
+.stat{background:var(--bg);border-radius:var(--radius-sm);padding:12px 14px}
+.stat .sl{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.stat .sv{font-size:22px;font-weight:600;color:var(--ink);margin-top:2px}
+</style>
+</head>
+<body>
+<h2 class="sr-only">Cheque Tracker — free edition using Gemini Vision and Google Sheets</h2>
+
+<div class="shell">
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-logo">
+      <h1>&#x1F4B4; Cheque Tracker</h1>
+      <p>Free Edition &mdash; Gemini + Sheets</p>
+      <div id="token-badge" style="margin-top:8px;padding:5px 8px;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;font-size:11px;color:#166534;font-family:monospace;display:none">
+        &#x1F4CA; Today: <span id="badge-used">0</span>/1500 tokens
+        <div id="badge-bar" style="margin-top:4px;height:4px;background:#dcfce7;border-radius:2px">
+          <div id="badge-fill" style="height:4px;background:#16a34a;border-radius:2px;width:0%;transition:width .3s"></div>
+        </div>
+      </div>
+    </div>
+    <div class="nav-item active" onclick="show('upload')"><span class="icon">&#x2B06;</span> Upload &amp; Extract</div>
+    <div class="nav-item" onclick="show('records')"><span class="icon">&#x1F4CB;</span> Records</div>
+    <div class="nav-item" onclick="show('reminders')"><span class="icon">&#x1F514;</span> Reminders</div>
+    <div class="nav-item" onclick="show('setup')"><span class="icon">&#x2699;</span> Setup Guide</div>
+    <div class="nav-item" onclick="show('appscript')"><span class="icon">&#x1F4DC;</span> Apps Script Code</div>
+    <div class="nav-item" onclick="show('tokens')"><span class="icon">&#x1F4CA;</span> Token Usage</div>
+    <div class="nav-item" onclick="show('github')"><span class="icon">&#x1F4BB;</span> GitHub Hosting</div>
+  </nav>
+
+  <main class="main">
+
+    <!-- ══ UPLOAD TAB ══ -->
+    <div id="tab-upload">
+      <div class="page-head">Upload &amp; Extract</div>
+      <div class="page-sub">Upload a cheque image &rarr; Gemini reads it &rarr; save to Google Sheets</div>
+
+      <div class="free-stack">
+        <div class="free-tile"><div class="ft-icon">&#x1F916;</div><div class="ft-name">Gemini 1.5 Flash</div><div class="ft-tag">&#x2713; Free tier</div></div>
+        <div class="free-tile"><div class="ft-icon">&#x1F4CA;</div><div class="ft-name">Google Sheets</div><div class="ft-tag">&#x2713; Free forever</div></div>
+        <div class="free-tile"><div class="ft-icon">&#x1F4E7;</div><div class="ft-name">Gmail alerts</div><div class="ft-tag">&#x2713; Free forever</div></div>
+        <div class="free-tile"><div class="ft-icon">&#x23F0;</div><div class="ft-name">Apps Script</div><div class="ft-tag">&#x2713; Free forever</div></div>
+      </div>
+
+      <!-- Config -->
+      <div class="card">
+        <div class="card-head">&#x1F511; API configuration</div>
+        <div class="row">
+          <div class="field">
+            <div class="label">Gemini API key <span style="color:var(--green);font-size:10px">(free at aistudio.google.com)</span></div>
+            <input type="password" id="api-key" class="mono" placeholder="AIza...">
+          </div>
+          <div class="field" style="max-width:200px">
+            <div class="label">Google Sheets URL <span style="color:var(--muted);font-size:10px">(optional)</span></div>
+            <input type="url" id="sheet-url" class="mono" placeholder="https://script.google.com/...">
+          </div>
+        </div>
+        <div style="margin-top:8px;font-size:11px;color:var(--muted)">Keys are stored only in your browser. See <strong>Setup Guide</strong> tab for how to get these.</div>
+      </div>
+
+      <!-- Upload -->
+      <div class="card">
+        <div class="card-head">&#x1F4F7; Cheque image</div>
+        <div class="dropzone" id="dz">
+          <input type="file" id="file-in" accept="image/*" onchange="handleFile(this)">
+          <div class="dz-icon">&#x1F5BC;</div>
+          <p><strong>Click to upload</strong> or drag &amp; drop</p>
+          <p style="margin-top:3px">JPG &middot; PNG &middot; WebP &middot; HEIC</p>
+        </div>
+        <div id="prev-wrap">
+          <img id="prev-img" alt="Cheque preview">
+          <div style="margin-top:12px;display:flex;gap:10px">
+            <button class="btn btn-primary" id="ext-btn" onclick="extractData()" disabled>
+              <span id="ext-label">&#x1F50D; Extract with Gemini Vision</span>
+              <div id="ext-spin" class="spinner hidden"></div>
+            </button>
+            <button class="btn btn-ghost" onclick="clearAll()">Clear</button>
+          </div>
+          <div id="status-panel" style="margin-top:14px;padding:12px 14px;border-radius:8px;background:#f0f0ff;border:1px solid #d0d0f0;font-size:12px;font-family:monospace;display:none">
+            <div style="font-weight:700;margin-bottom:6px;color:#3a3a5c">&#x1F4CB; Status log</div>
+            <div id="status-lines"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Result -->
+      <div class="card hidden" id="result-card">
+        <div class="card-head">&#x2728; Extracted details</div>
+        <div class="rgrid" id="rgrid"></div>
+        <div class="divider"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="saveRecord()">
+            <span id="save-label">&#x1F4BE; Save to Google Sheets</span>
+            <div id="save-spin" class="spinner hidden"></div>
+          </button>
+          <button class="btn btn-ghost" onclick="clearAll()">Extract another</button>
+        </div>
+        <div id="logbox" class="log"></div>
+      </div>
+    </div>
+
+    <!-- ══ RECORDS TAB ══ -->
+    <div id="tab-records" class="hidden">
+      <div class="page-head">Records</div>
+      <div class="page-sub">All cheques saved this session. Connect Google Sheets to persist permanently.</div>
+      <div class="stats">
+        <div class="stat"><div class="sl">Total cheques</div><div class="sv" id="stat-total">0</div></div>
+        <div class="stat"><div class="sl">Due this week</div><div class="sv" id="stat-week">0</div></div>
+        <div class="stat"><div class="sl">Overdue</div><div class="sv" id="stat-over" style="color:var(--red)">0</div></div>
+      </div>
+      <div class="card">
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Vendor</th><th>Amount</th><th>Cheque date</th><th>Reminder date</th><th>Days left</th><th>Status</th><th></th></tr></thead>
+            <tbody id="records-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ REMINDERS TAB ══ -->
+    <div id="tab-reminders" class="hidden">
+      <div class="page-head">Reminders</div>
+      <div class="page-sub">Cheques due within 5 days. Google Apps Script emails you automatically.</div>
+      <div id="rem-list"></div>
+      <div class="card" style="margin-top:16px">
+        <div class="card-head">&#x2709; Email notification settings</div>
+        <div class="hint">These settings are used in the Apps Script code. Copy the values below into your script.</div>
+        <div class="row">
+          <div class="field">
+            <div class="label">Your email address</div>
+            <input type="email" id="notif-email" placeholder="you@gmail.com">
+          </div>
+          <div class="field" style="max-width:180px">
+            <div class="label">Notify days before</div>
+            <select id="notif-days"><option value="2">2 days before</option><option value="1">1 day before</option><option value="3">3 days before</option></select>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="saveNotif()" style="margin-top:8px">Save settings</button>
+      </div>
+    </div>
+
+    <!-- ══ SETUP TAB ══ -->
+    <div id="tab-setup" class="hidden">
+      <div class="page-head">Setup guide</div>
+      <div class="page-sub">Five steps to get fully free, automated cheque tracking running.</div>
+      <div class="card">
+        <div class="stepper">
+
+          <div class="step">
+            <div class="step-num" id="sn1">1</div>
+            <div class="step-body">
+              <h3>Get a free Gemini API key</h3>
+              <p>Go to <a href="https://aistudio.google.com" target="_blank"><strong>aistudio.google.com</strong></a> and sign in with your Google account.</p>
+              <ul>
+                <li>Click <strong>Get API key</strong> &rarr; <strong>Create API key in new project</strong></li>
+                <li>Copy the key (starts with <code>AIza</code>)</li>
+                <li>Paste it in the <strong>API configuration</strong> box on the Upload tab</li>
+              </ul>
+              <p style="margin-top:6px;color:var(--green);font-size:12px">&#x2713; Free: 15 requests/minute &middot; 1,500 requests/day &middot; No credit card needed</p>
+            </div>
+          </div>
+
+          <div class="step">
+            <div class="step-num" id="sn2">2</div>
+            <div class="step-body">
+              <h3>Create your Google Sheet</h3>
+              <p>Go to <a href="https://sheets.google.com" target="_blank"><strong>sheets.google.com</strong></a> &rarr; create a blank spreadsheet.</p>
+              <p style="margin-top:6px">In <strong>Row 1</strong>, add exactly these headers (one per column):</p>
+              <div class="codeblock"><span class="str">Vendor | Amount | Cheque Date | Reminder Date | Account No | Bank | MICR Code | Status | Uploaded At</span></div>
+              <p style="margin-top:6px;font-size:12px;color:var(--muted)">Tip: Copy the sheet URL from your browser &mdash; you'll need it in Step 4.</p>
+            </div>
+          </div>
+
+          <div class="step">
+            <div class="step-num" id="sn3">3</div>
+            <div class="step-body">
+              <h3>Open Apps Script editor</h3>
+              <p>In your Google Sheet: click <strong>Extensions</strong> &rarr; <strong>Apps Script</strong>.</p>
+              <ul>
+                <li>Delete the default <code>function myFunction() {}</code> code</li>
+                <li>Go to the <strong>Apps Script Code</strong> tab (sidebar) &rarr; copy the full script</li>
+                <li>Paste it into the Apps Script editor</li>
+                <li>Click <strong>Save</strong> (&#x1F4BE; icon or Ctrl+S)</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="step">
+            <div class="step-num" id="sn4">4</div>
+            <div class="step-body">
+              <h3>Deploy as a Web App</h3>
+              <p>In Apps Script: click <strong>Deploy</strong> &rarr; <strong>New deployment</strong> &rarr; select type <strong>Web app</strong>.</p>
+              <ul>
+                <li>Description: <code>Cheque Tracker API</code></li>
+                <li>Execute as: <strong>Me</strong></li>
+                <li>Who has access: <strong>Anyone</strong></li>
+                <li>Click <strong>Deploy</strong> &rarr; <strong>Authorize access</strong> (grant Gmail + Sheets permissions)</li>
+                <li>Copy the <strong>Web app URL</strong> (looks like <code>https://script.google.com/macros/s/AKfy.../exec</code>)</li>
+                <li>Paste it into the <strong>Google Sheets URL</strong> field on the Upload tab</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="step">
+            <div class="step-num" id="sn5">5</div>
+            <div class="step-body">
+              <h3>Set up the daily reminder trigger</h3>
+              <p>In Apps Script: click the <strong>clock icon</strong> (Triggers) in the left sidebar &rarr; <strong>+ Add Trigger</strong>.</p>
+              <ul>
+                <li>Choose function: <strong>checkReminders</strong></li>
+                <li>Event source: <strong>Time-driven</strong></li>
+                <li>Type: <strong>Day timer</strong></li>
+                <li>Time: <strong>9am to 10am</strong></li>
+                <li>Click <strong>Save</strong></li>
+              </ul>
+              <p style="margin-top:6px;color:var(--green);font-size:12px">&#x2713; Done! Every morning at 9 AM, the script checks all cheques and emails you 2 days before each one is due.</p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ APPS SCRIPT TAB ══ -->
+    <div id="tab-appscript" class="hidden">
+      <div class="page-head">Google Apps Script code</div>
+      <div class="page-sub">Copy this entire script into your Apps Script editor (Extensions &rarr; Apps Script).</div>
+
+      <div class="card">
+        <div class="card-head">&#x1F4CB; Full Apps Script (paste into editor)
+          <button class="btn btn-ghost btn-sm copy-btn" onclick="copyScript()">&#x1F4CB; Copy all</button>
+        </div>
+        <div class="codeblock" id="script-block"><span class="cm">// ═══════════════════════════════════════════════
+// Cheque Tracker — Google Apps Script
+// Paste this into Extensions → Apps Script
+// ═══════════════════════════════════════════════</span>
+
+<span class="cm">// ── CONFIG: edit these two lines ──</span>
+<span class="kw">const</span> NOTIFY_EMAIL = <span class="str">'your@gmail.com'</span>;   <span class="cm">// your email</span>
+<span class="kw">const</span> DAYS_BEFORE  = <span class="str">2</span>;                   <span class="cm">// remind N days before</span>
+<span class="kw">const</span> SHEET_NAME   = <span class="str">'Sheet1'</span>;             <span class="cm">// sheet tab name</span>
+
+<span class="cm">// ── doPost: receives data from the web app ──</span>
+<span class="kw">function</span> <span class="fn">doPost</span>(e) {
+  <span class="kw">try</span> {
+    <span class="kw">const</span> data  = JSON.parse(e.postData.contents);
+    <span class="kw">const</span> sheet = SpreadsheetApp
+      .getActiveSpreadsheet()
+      .getSheetByName(SHEET_NAME);
+
+    sheet.appendRow([
+      data.vendor      || <span class="str">''</span>,
+      data.amount      || <span class="str">''</span>,
+      data.chequeDate  || <span class="str">''</span>,
+      data.reminderDate|| <span class="str">''</span>,
+      data.accountNo   || <span class="str">''</span>,
+      data.bankName    || <span class="str">''</span>,
+      data.micrCode    || <span class="str">''</span>,
+      <span class="str">'Pending'</span>,
+      <span class="kw">new</span> Date().toLocaleString()
+    ]);
+
+    <span class="kw">return</span> ContentService
+      .createTextOutput(JSON.stringify({ ok: <span class="kw">true</span> }))
+      .setMimeType(ContentService.MimeType.JSON);
+
+  } <span class="kw">catch</span>(err) {
+    <span class="kw">return</span> ContentService
+      .createTextOutput(JSON.stringify({ ok: <span class="kw">false</span>, error: err.message }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+<span class="cm">// ── doGet: health check (visit URL to test) ──</span>
+<span class="kw">function</span> <span class="fn">doGet</span>() {
+  <span class="kw">return</span> ContentService
+    .createTextOutput(JSON.stringify({ status: <span class="str">'Cheque Tracker is running'</span> }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+<span class="cm">// ── checkReminders: run daily via trigger ──</span>
+<span class="kw">function</span> <span class="fn">checkReminders</span>() {
+  <span class="kw">const</span> sheet = SpreadsheetApp
+    .getActiveSpreadsheet()
+    .getSheetByName(SHEET_NAME);
+  <span class="kw">const</span> rows  = sheet.getDataRange().getValues();
+  <span class="kw">const</span> today = <span class="kw">new</span> Date();
+  today.setHours(0, 0, 0, 0);
+
+  rows.slice(1).forEach((row, i) => {
+    <span class="kw">if</span> (row[6] === <span class="str">'Notified'</span>) <span class="kw">return</span>; <span class="cm">// skip already notified</span>
+
+    <span class="kw">const</span> remDate = <span class="kw">new</span> Date(row[3]);
+    remDate.setHours(0, 0, 0, 0);
+    <span class="kw">const</span> diffDays = (remDate - today) / 86400000;
+
+    <span class="kw">if</span> (diffDays >= 0 && diffDays < 1) {
+      <span class="kw">const</span> subject = <span class="str">`⚠️ Cheque reminder: ${row[0]} due in ${DAYS_BEFORE} days`</span>;
+      <span class="kw">const</span> body =
+        <span class="str">`Hello,\n\n`</span> +
+        <span class="str">`This is a reminder that the following cheque is due soon:\n\n`</span> +
+        <span class="str">`  Vendor      : ${row[0]}\n`</span> +
+        <span class="str">`  Amount      : ₹${row[1]}\n`</span> +
+        <span class="str">`  Cheque date : ${row[2]}\n`</span> +
+        <span class="str">`  Bank        : ${row[5] || 'N/A'}\n\n`</span> +
+        <span class="str">`Please ensure payment is arranged.\n\nCheque Tracker`</span>;
+
+      GmailApp.sendEmail(NOTIFY_EMAIL, subject, body);
+
+      <span class="cm">// Mark as notified in column G (index 6)</span>
+      sheet.getRange(i + 2, 7).setValue(<span class="str">'Notified'</span>);
+    }
+  });
+}
+
+<span class="cm">// ── sendTestEmail: run manually to verify setup ──</span>
+<span class="kw">function</span> <span class="fn">sendTestEmail</span>() {
+  GmailApp.sendEmail(
+    NOTIFY_EMAIL,
+    <span class="str">'✅ Cheque Tracker is working!'</span>,
+    <span class="str">'Your Cheque Tracker reminder system is set up correctly.'</span>
+  );
+  Logger.log(<span class="str">'Test email sent to '</span> + NOTIFY_EMAIL);
+}</div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">&#x1F527; Quick reference</div>
+        <table>
+          <thead><tr><th>Function</th><th>What it does</th><th>How to run</th></tr></thead>
+          <tbody>
+            <tr><td class="mono-td">doPost()</td><td>Receives cheque data from the UI and appends to Sheet</td><td>Called automatically when you click Save</td></tr>
+            <tr><td class="mono-td">doGet()</td><td>Health check — confirms the Web App is live</td><td>Open the Web App URL in a browser</td></tr>
+            <tr><td class="mono-td">checkReminders()</td><td>Scans all rows, emails you for any due in N days</td><td>Daily trigger at 9 AM (Step 5)</td></tr>
+            <tr><td class="mono-td">sendTestEmail()</td><td>Sends a test email to verify Gmail permissions</td><td>Run manually from Apps Script editor</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+
+    <!-- TOKEN USAGE TAB -->
+    <div id="tab-tokens" class="hidden">
+      <div class="page-head">Token usage tracker</div>
+      <div class="page-sub">Gemini free tier: 1,500 requests/day &middot; 15 requests/minute &middot; 1M tokens/minute. No credit card needed.</div>
+
+      <div class="stats" style="grid-template-columns:repeat(4,1fr)">
+        <div class="stat"><div class="sl">Today&apos;s tokens</div><div class="sv" id="tok-today">0</div></div>
+        <div class="stat"><div class="sl">Today&apos;s calls</div><div class="sv" id="tok-calls">0</div></div>
+        <div class="stat"><div class="sl">All-time tokens</div><div class="sv" id="tok-total">0</div></div>
+        <div class="stat"><div class="sl">Free limit</div><div class="sv" style="color:var(--green)">1,500/day</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">&#x1F4CA; Daily usage vs free limit</div>
+        <div style="background:var(--bg);border-radius:8px;padding:4px;margin-bottom:12px">
+          <div id="tok-bar-fill" style="height:20px;background:linear-gradient(90deg,#16a34a,#4ade80);border-radius:6px;width:0%;transition:width .5s;min-width:2px"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted)">
+          <span id="tok-bar-label">0 / 1,500 tokens used today</span>
+          <span id="tok-bar-pct">0%</span>
+        </div>
+        <div id="tok-warning" class="hidden" style="margin-top:12px;padding:10px 14px;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;font-size:13px;color:#92400e">
+          &#x26A0; You&apos;ve used over 80% of today&apos;s free limit. Consider pausing until tomorrow.
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">&#x1F4DC; Usage history (last 20 calls)</div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Time</th><th>Input tokens</th><th>Output tokens</th><th>Total</th></tr></thead>
+            <tbody id="tok-history"></tbody>
+          </table>
+        </div>
+        <div style="margin-top:14px">
+          <button class="btn btn-danger btn-sm" onclick="clearTokens()">Clear history</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">&#x2139; Gemini free tier limits</div>
+        <table>
+          <thead><tr><th>Limit</th><th>Free amount</th><th>What it means</th></tr></thead>
+          <tbody>
+            <tr><td>Requests per day</td><td class="mono-td" style="color:var(--green)">1,500</td><td>You can scan ~1,500 cheques per day for free</td></tr>
+            <tr><td>Requests per minute</td><td class="mono-td" style="color:var(--green)">15</td><td>Don&apos;t click Extract more than 15 times in a minute</td></tr>
+            <tr><td>Input tokens/minute</td><td class="mono-td" style="color:var(--green)">1,000,000</td><td>Effectively unlimited for this use case</td></tr>
+            <tr><td>Billing trigger</td><td class="mono-td" style="color:var(--green)">Never</td><td>Free tier never charges. Billing only if you explicitly upgrade</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- GITHUB HOSTING TAB -->
+    <div id="tab-github" class="hidden">
+      <div class="page-head">Host on GitHub Pages (free)</div>
+      <div class="page-sub">GitHub Pages gives you a permanent public URL like <strong>yourusername.github.io/cheque-tracker</strong> — completely free, forever.</div>
+
+      <div class="card">
+        <div class="card-head">&#x1F4CC; What you get</div>
+        <table>
+          <thead><tr><th>Feature</th><th>Value</th></tr></thead>
+          <tbody>
+            <tr><td>Hosting cost</td><td style="color:var(--green);font-weight:600">&#x2713; Free forever</td></tr>
+            <tr><td>Your URL</td><td class="mono-td">https://yourusername.github.io/cheque-tracker</td></tr>
+            <tr><td>SSL / HTTPS</td><td style="color:var(--green);font-weight:600">&#x2713; Automatic (fixes the CORS issue too!)</td></tr>
+            <tr><td>Updates</td><td>Edit the file on GitHub and it auto-deploys in ~30 sec</td></tr>
+            <tr><td>Access</td><td>Works on any device, anywhere — share the link</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <div class="card-head">&#x1F527; Step-by-step setup</div>
+        <div class="stepper">
+
+          <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-body">
+              <h3>Create a free GitHub account</h3>
+              <p>Go to <strong>github.com</strong> &rarr; Sign up. Use your Gmail. It&apos;s free.</p>
+            </div>
+          </div>
+
+          <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-body">
+              <h3>Create a new repository</h3>
+              <p>Click the <strong>+</strong> icon (top right) &rarr; <strong>New repository</strong>.</p>
+              <ul>
+                <li>Repository name: <code>cheque-tracker</code></li>
+                <li>Visibility: <strong>Public</strong> (required for free Pages)</li>
+                <li>Check <strong>Add a README file</strong></li>
+                <li>Click <strong>Create repository</strong></li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-body">
+              <h3>Upload your HTML file</h3>
+              <p>In your new repo, click <strong>Add file</strong> &rarr; <strong>Upload files</strong>.</p>
+              <ul>
+                <li>Drag and drop <code>cheque-tracker-free.html</code></li>
+                <li><strong>Important:</strong> rename it to exactly <code>index.html</code> before uploading — this makes it your homepage</li>
+                <li>Scroll down &rarr; click <strong>Commit changes</strong></li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="step">
+            <div class="step-num">4</div>
+            <div class="step-body">
+              <h3>Enable GitHub Pages</h3>
+              <p>In your repo, click <strong>Settings</strong> (top tab) &rarr; scroll to <strong>Pages</strong> (left sidebar).</p>
+              <ul>
+                <li>Source: <strong>Deploy from a branch</strong></li>
+                <li>Branch: <strong>main</strong> &rarr; folder: <strong>/ (root)</strong></li>
+                <li>Click <strong>Save</strong></li>
+              </ul>
+              <p style="margin-top:6px">Wait ~60 seconds, then your site is live at:</p>
+              <div class="codeblock">https://<span class="str">yourusername</span>.github.io/cheque-tracker</div>
+            </div>
+          </div>
+
+          <div class="step">
+            <div class="step-num">5</div>
+            <div class="step-body">
+              <h3>Update your Google Apps Script CORS setting</h3>
+              <p>Since you&apos;re now on HTTPS, go to your Apps Script &rarr; <strong>Deploy &rarr; Manage deployments &rarr; Edit</strong>.</p>
+              <ul>
+                <li>No changes needed to the code — just create a new version</li>
+                <li>Click <strong>Deploy</strong> to refresh the Web App URL</li>
+                <li>Paste the new URL into your hosted app&apos;s config</li>
+              </ul>
+              <p style="margin-top:6px;color:var(--green);font-size:12px">&#x2713; That&apos;s it! Your cheque tracker is now live on the internet.</p>
+            </div>
+          </div>
+
+          <div class="step">
+            <div class="step-num">6</div>
+            <div class="step-body">
+              <h3>How to update the app later</h3>
+              <p>Whenever you get an updated <code>index.html</code> from Claude:</p>
+              <ul>
+                <li>Go to your GitHub repo &rarr; click <code>index.html</code></li>
+                <li>Click the <strong>pencil icon</strong> (Edit) or <strong>upload</strong> a new file</li>
+                <li>Commit the change &rarr; GitHub auto-deploys in ~30 seconds</li>
+              </ul>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">&#x1F512; Security note: API key on GitHub</div>
+        <div style="padding:12px;background:#fef3c7;border-radius:8px;border:1px solid #fcd34d;font-size:13px;color:#92400e">
+          <strong>&#x26A0; Never hardcode your API key in the HTML file.</strong><br>
+          The app already handles this safely &mdash; the API key is entered by the user at runtime and stored only in their browser&apos;s localStorage. The HTML file uploaded to GitHub contains <em>no secrets</em>. Safe to make the repo public.
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+let records = JSON.parse(localStorage.getItem('ct_records') || '[]');
+let curB64 = null, curMime = 'image/jpeg', extracted = null;
+let tokenLog = JSON.parse(localStorage.getItem('ct_tokens') || '[]');
+const FREE_LIMIT = 1500; // Gemini free tier daily limit
+
+function slog(msg, type='inf') {
+  const panel = document.getElementById('status-panel');
+  const lines = document.getElementById('status-lines');
+  if (!panel || !lines) return;
+  panel.style.display = 'block';
+  const colors = { ok:'#15803d', err:'#dc2626', inf:'#4f46e5' };
+  const icons  = { ok:'✓', err:'✗', inf:'→' };
+  lines.innerHTML += `<div style="color:${colors[type]||'#333'};margin-bottom:2px">${icons[type]||'•'} [${new Date().toLocaleTimeString()}] ${msg}</div>`;
+  lines.scrollTop = lines.scrollHeight;
+}
+
+window.onload = () => {
+  const k = localStorage.getItem('ct_apikey');
+  const u = localStorage.getItem('ct_sheeturl');
+  const em = localStorage.getItem('ct_email');
+  const dn = localStorage.getItem('ct_days');
+  if (k) document.getElementById('api-key').value = k;
+  if (u) document.getElementById('sheet-url').value = u;
+  if (em) document.getElementById('notif-email').value = em;
+  if (dn) document.getElementById('notif-days').value = dn;
+  renderRecords(); renderReminders(); updateTokenBadge();
+};
+
+function show(tab) {
+  ['upload','records','reminders','setup','appscript','tokens','github'].forEach(t => {
+    const el = document.getElementById('tab-'+t);
+    if (el) el.classList.add('hidden');
+  });
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const el = document.getElementById('tab-'+tab);
+  if (el) el.classList.remove('hidden');
+  const idx = ['upload','records','reminders','setup','appscript','tokens','github'].indexOf(tab);
+  if (idx >= 0) document.querySelectorAll('.nav-item')[idx]?.classList.add('active');
+  if (tab === 'records') renderRecords();
+  if (tab === 'reminders') renderReminders();
+  if (tab === 'tokens') updateTokenBadge();
+}
+
+function handleFile(inp) {
+  const f = inp.files[0]; if (!f) return;
+  curMime = f.type || 'image/jpeg';
+  const r = new FileReader();
+  r.onload = e => {
+    document.getElementById('prev-img').src = e.target.result;
+    document.getElementById('prev-wrap').style.display = 'block';
+    document.getElementById('ext-btn').disabled = false;
+    curB64 = e.target.result.split(',')[1];
+  };
+  r.readAsDataURL(f);
+}
+
+function clearAll() {
+  curB64 = null; extracted = null;
+  document.getElementById('file-in').value = '';
+  document.getElementById('prev-wrap').style.display = 'none';
+  document.getElementById('ext-btn').disabled = true;
+  document.getElementById('result-card').classList.add('hidden');
+  document.getElementById('logbox').style.display = 'none';
+  document.getElementById('logbox').innerHTML = '';
+}
+
+function log(msg, type='inf') {
+  const b = document.getElementById('logbox');
+  b.style.display = 'block';
+  b.innerHTML += `<span class="${type}">[${new Date().toLocaleTimeString()}] ${msg}</span>\n`;
+  b.scrollTop = b.scrollHeight;
+}
+
+async function extractData() {
+  slog('Button clicked — starting extraction...', 'inf');
+  const apiKey = document.getElementById('api-key').value.trim();
+  if (!apiKey) { slog('ERROR: No API key entered. Paste your Gemini key above.', 'err'); alert('Enter your Gemini API key first.'); return; }
+  if (!curB64)  { slog('ERROR: No image loaded.', 'err'); alert('Upload a cheque image first.'); return; }
+  slog('API key found. Image loaded. Proceeding...', 'ok');
+  localStorage.setItem('ct_apikey', apiKey);
+  localStorage.setItem('ct_sheeturl', document.getElementById('sheet-url').value.trim());
+
+  document.getElementById('ext-btn').disabled = true;
+  document.getElementById('ext-label').textContent = 'Extracting...';
+  document.getElementById('ext-spin').classList.remove('hidden');
+  document.getElementById('result-card').classList.add('hidden');
+  document.getElementById('logbox').innerHTML = '';
+
+  try {
+    slog('Calling Gemini 2.5 Flash API...', 'inf');
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    const prompt = `Analyze this cheque image and extract the following fields. Return ONLY a valid JSON object with no markdown, no explanation:
+{
+  "vendor": "full payee or vendor name written on cheque",
+  "amount": "numeric amount as string without currency symbol",
+  "chequeDate": "date in YYYY-MM-DD format",
+  "accountNo": "cheque number printed on the cheque if visible, else null",
+  "bankName": "bank name printed on cheque, else null",
+  "micrCode": "look at the MICR line at the very bottom of the cheque. It contains numbers printed in magnetic ink between pipe or block symbols that look like | |. Find the first group of digits between the first pair of | | symbols and return only the first 6 digits from that group. Return just those 6 digits as a string, nothing else."
+}
+If a field is not visible or unclear, use null.`;
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [
+          { inline_data: { mime_type: curMime, data: curB64 } },
+          { text: prompt }
+        ]}],
+        generationConfig: { temperature: 0.1, maxOutputTokens: 1024 }
+      })
+    });
+
+    if (!res.ok) {
+      const e = await res.json();
+      throw new Error(e.error?.message || `API error ${res.status}`);
+    }
+
+    const data = await res.json();
+    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    slog('Response received! Raw: ' + raw.substring(0, 80) + '...', 'ok');
+
+    // Robust JSON extraction — handles markdown, extra text, partial wraps
+    let cleaned = raw;
+    // Remove markdown code fences
+    cleaned = cleaned.replace(/```json\s*/gi, '').replace(/```\s*/g, '');
+    // Try to find a JSON object anywhere in the response
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('No JSON object found in Gemini response. Raw: ' + raw.substring(0, 200));
+    cleaned = jsonMatch[0];
+    slog('Parsing JSON...', 'inf');
+    extracted = JSON.parse(cleaned);
+
+    if (extracted.chequeDate) {
+      const d = new Date(extracted.chequeDate);
+      d.setDate(d.getDate() - parseInt(localStorage.getItem('ct_days') || '2'));
+      extracted.reminderDate = d.toISOString().split('T')[0];
+    }
+
+    // Capture token usage
+    const usage = data.usageMetadata || {};
+    const tokIn  = usage.promptTokenCount || 0;
+    const tokOut = usage.candidatesTokenCount || 0;
+    const tokTotal = usage.totalTokenCount || (tokIn + tokOut);
+    const entry = { date: new Date().toISOString(), input: tokIn, output: tokOut, total: tokTotal };
+    tokenLog.push(entry);
+    localStorage.setItem('ct_tokens', JSON.stringify(tokenLog));
+    slog(`Tokens used: ${tokTotal} (in:${tokIn} out:${tokOut})`, 'ok');
+    updateTokenBadge();
+
+    slog('Extraction successful!', 'ok');
+    renderResult();
+  } catch(err) {
+    slog('ERROR: ' + err.message, 'err');
+    slog('Check your API key and try again.', 'err');
+  } finally {
+    document.getElementById('ext-btn').disabled = false;
+    document.getElementById('ext-label').textContent = '🔍 Extract with Gemini Vision';
+    document.getElementById('ext-spin').classList.add('hidden');
+  }
+}
+
+function renderResult() {
+  if (!extracted) return;
+  document.getElementById('result-card').classList.remove('hidden');
+  document.getElementById('rgrid').innerHTML = `
+    <div class="ritem"><div class="rl">Vendor / Payee</div><div class="rv">${extracted.vendor||'—'}</div></div>
+    <div class="ritem"><div class="rl">Amount</div><div class="rv">₹${extracted.amount||'—'}</div></div>
+    <div class="ritem"><div class="rl">Cheque date</div><div class="rv">${extracted.chequeDate||'—'}</div></div>
+    <div class="ritem"><div class="rl">Reminder date</div><div class="rv">${extracted.reminderDate||'—'}</div></div>
+    ${extracted.bankName ? `<div class="ritem"><div class="rl">Bank</div><div class="rv">${extracted.bankName}</div></div>` : ''}
+    ${extracted.accountNo ? `<div class="ritem"><div class="rl">Cheque / Acc no</div><div class="rv">${extracted.accountNo}</div></div>` : ''}
+    ${extracted.micrCode ? `<div class="ritem full"><div class="rl">MICR Code (first 6 digits between || ||)</div><div class="rv" style="color:var(--accent);letter-spacing:4px;font-size:22px">${extracted.micrCode}</div></div>` : ''}
+  `;
+}
+
+async function saveRecord() {
+  if (!extracted) return;
+  const sheetUrl = document.getElementById('sheet-url').value.trim();
+  records.push({ ...extracted, status:'Pending', savedAt: new Date().toISOString(), id: Date.now() });
+  localStorage.setItem('ct_records', JSON.stringify(records));
+  log('Saved to local records.', 'ok');
+
+  if (sheetUrl) {
+    document.getElementById('save-label').textContent = 'Saving to Sheets...';
+    document.getElementById('save-spin').classList.remove('hidden');
+    try {
+      await fetch(sheetUrl, { method:'POST', mode:'no-cors', headers:{'Content-Type':'application/json'}, body: JSON.stringify(extracted) });
+      log('Saved to Google Sheets ✓', 'ok');
+    } catch(e) { log('Sheets error: ' + e.message, 'err'); }
+    finally {
+      document.getElementById('save-label').textContent = '💾 Save to Google Sheets';
+      document.getElementById('save-spin').classList.add('hidden');
+    }
+  } else {
+    log('No Sheets URL set — saved locally only. Add URL in config above.', 'inf');
+  }
+}
+
+function renderRecords() {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const body = document.getElementById('records-body');
+  if (!records.length) {
+    body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:32px">No cheques yet — upload one to get started.</td></tr>';
+    document.getElementById('stat-total').textContent = 0;
+    document.getElementById('stat-week').textContent = 0;
+    document.getElementById('stat-over').textContent = 0;
+    return;
+  }
+  let week = 0, over = 0;
+  body.innerHTML = records.map((r,i) => {
+    const due = new Date(r.chequeDate);
+    const diff = Math.ceil((due - today) / 86400000);
+    if (diff < 0) over++;
+    if (diff >= 0 && diff <= 7) week++;
+    const cls = diff < 0 ? 'badge-red' : diff <= 2 ? 'badge-amber' : 'badge-green';
+    const lbl = diff < 0 ? 'Overdue' : diff === 0 ? 'Today' : `${diff}d`;
+    const sbadge = diff < 0 ? '<span class="badge badge-red">Overdue</span>' : diff <= 2 ? '<span class="badge badge-amber">Due soon</span>' : '<span class="badge badge-green">Upcoming</span>';
+    return `<tr>
+      <td><strong>${r.vendor||'—'}</strong></td>
+      <td class="mono-td">₹${r.amount||'—'}</td>
+      <td class="mono-td">${r.chequeDate||'—'}</td>
+      <td class="mono-td">${r.reminderDate||'—'}</td>
+      <td><span class="badge ${cls}">${lbl}</span></td>
+      <td>${sbadge}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="deleteRecord(${i})">✕</button></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('stat-total').textContent = records.length;
+  document.getElementById('stat-week').textContent = week;
+  document.getElementById('stat-over').textContent = over;
+}
+
+function deleteRecord(i) {
+  if (!confirm('Delete this record?')) return;
+  records.splice(i, 1);
+  localStorage.setItem('ct_records', JSON.stringify(records));
+  renderRecords();
+}
+
+function renderReminders() {
+  const list = document.getElementById('rem-list');
+  const today = new Date(); today.setHours(0,0,0,0);
+  const upcoming = records.filter(r => {
+    const d = Math.ceil((new Date(r.chequeDate) - today) / 86400000);
+    return d >= -1 && d <= 5;
+  }).sort((a,b) => new Date(a.chequeDate) - new Date(b.chequeDate));
+  if (!upcoming.length) {
+    list.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;font-size:13px">No cheques due in the next 5 days. All clear! ✓</div>';
+    return;
+  }
+  list.innerHTML = upcoming.map(r => {
+    const diff = Math.ceil((new Date(r.chequeDate) - today) / 86400000);
+    const cls = diff < 0 ? 'urgent' : diff <= 1 ? 'soon' : 'ok';
+    const icon = diff < 0 ? '🚨' : diff <= 1 ? '⚠️' : '🔔';
+    const msg = diff < 0 ? `Overdue by ${Math.abs(diff)} day(s)` : diff === 0 ? 'Due TODAY' : diff === 1 ? 'Due tomorrow' : `Due in ${diff} days`;
+    return `<div class="rem-card ${cls}">
+      <div class="rem-icon">${icon}</div>
+      <div>
+        <div class="rem-title">${r.vendor} — ₹${r.amount}</div>
+        <div class="rem-sub">${msg} &middot; Cheque date: ${r.chequeDate} &middot; Bank: ${r.bankName||'N/A'}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function saveNotif() {
+  const em = document.getElementById('notif-email').value;
+  const dn = document.getElementById('notif-days').value;
+  if (!em) { alert('Enter an email address.'); return; }
+  localStorage.setItem('ct_email', em);
+  localStorage.setItem('ct_days', dn);
+  alert(`Saved! Update NOTIFY_EMAIL and DAYS_BEFORE in your Apps Script code with these values.`);
+}
+
+function copyScript() {
+  const text = document.getElementById('script-block').innerText;
+  navigator.clipboard.writeText(text).then(() => alert('Script copied to clipboard!')).catch(() => alert('Select the code manually and copy.'));
+}
+
+// ── Token tracking functions ──
+function updateTokenBadge() {
+  const today = new Date().toDateString();
+  const todayEntries = tokenLog.filter(e => new Date(e.date).toDateString() === today);
+  const todayTokens = todayEntries.reduce((s, e) => s + e.total, 0);
+  const todayCalls  = todayEntries.length;
+
+  // Update sidebar badge
+  const badge = document.getElementById('token-badge');
+  const used  = document.getElementById('badge-used');
+  const fill  = document.getElementById('badge-fill');
+  if (badge && used && fill) {
+    badge.style.display = 'block';
+    used.textContent = todayTokens.toLocaleString();
+    const pct = Math.min((todayTokens / FREE_LIMIT) * 100, 100);
+    fill.style.width = pct + '%';
+    fill.style.background = pct > 80 ? '#dc2626' : pct > 50 ? '#d97706' : '#16a34a';
+  }
+
+  // Update token tab if open
+  const tt = document.getElementById('tok-today');
+  if (tt) {
+    tt.textContent = todayTokens.toLocaleString();
+    document.getElementById('tok-calls').textContent = todayCalls;
+    const allTotal = tokenLog.reduce((s, e) => s + e.total, 0);
+    document.getElementById('tok-total').textContent = allTotal.toLocaleString();
+    const pct2 = Math.min((todayTokens / FREE_LIMIT) * 100, 100);
+    document.getElementById('tok-bar-fill').style.width = pct2 + '%';
+    document.getElementById('tok-bar-fill').style.background = pct2 > 80 ? '#dc2626' : pct2 > 50 ? '#d97706' : 'linear-gradient(90deg,#16a34a,#4ade80)';
+    document.getElementById('tok-bar-label').textContent = `${todayTokens.toLocaleString()} / 1,500 tokens used today`;
+    document.getElementById('tok-bar-pct').textContent = pct2.toFixed(1) + '%';
+    if (pct2 > 80) document.getElementById('tok-warning').classList.remove('hidden');
+    else document.getElementById('tok-warning').classList.add('hidden');
+
+    const hist = document.getElementById('tok-history');
+    const recent = [...tokenLog].reverse().slice(0, 20);
+    hist.innerHTML = recent.length ? recent.map(e => {
+      const t = new Date(e.date);
+      return `<tr><td>${t.toLocaleTimeString()} ${t.toLocaleDateString()}</td><td class="mono-td">${e.input}</td><td class="mono-td">${e.output}</td><td class="mono-td"><strong>${e.total}</strong></td></tr>`;
+    }).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px">No API calls yet</td></tr>';
+  }
+}
+
+function clearTokens() {
+  if (!confirm('Clear all token history?')) return;
+  tokenLog = [];
+  localStorage.removeItem('ct_tokens');
+  updateTokenBadge();
+}
+
+// ── Extended show() to handle new tabs ──
+// Drag & drop
+const dz = document.getElementById('dz');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('drag');
+  const f = e.dataTransfer.files[0];
+  if (f && f.type.startsWith('image/')) {
+    const fi = document.getElementById('file-in');
+    const dt = new DataTransfer(); dt.items.add(f); fi.files = dt.files;
+    handleFile(fi);
+  }
+});
+</script>
+</body>
+</html>
