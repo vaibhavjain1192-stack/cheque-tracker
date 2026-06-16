@@ -371,46 +371,69 @@ code{background:#1a1a2e;color:#a5b4fc;padding:2px 6px;border-radius:4px;font-fam
 // ═══════════════════════════════════════════════</span>
 
 <span class="cm">// ── CONFIG: edit these two lines ──</span>
-<span class="kw">const</span> NOTIFY_EMAIL = <span class="str">'your@gmail.com'</span>;   <span class="cm">// your email</span>
-<span class="kw">const</span> DAYS_BEFORE  = <span class="str">2</span>;                   <span class="cm">// remind N days before</span>
-<span class="kw">const</span> SHEET_NAME   = <span class="str">'Sheet1'</span>;             <span class="cm">// sheet tab name</span>
+<span class="kw">const</span> NOTIFY_EMAIL = <span class="str">'your@gmail.com'</span>;
+<span class="kw">const</span> DAYS_BEFORE  = <span class="str">2</span>;
+<span class="kw">const</span> SHEET_NAME   = <span class="str">'Sheet1'</span>;
 
-<span class="cm">// ── doPost: receives data from the web app ──</span>
-<span class="kw">function</span> <span class="fn">doPost</span>(e) {
+<span class="cm">// ── Helper: CORS headers for browser requests ──</span>
+<span class="kw">function</span> <span class="fn">corsResponse</span>(data) {
+  <span class="kw">return</span> ContentService
+    .createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+<span class="cm">// ── doGet: handles GET requests from browser (CORS-friendly) ──</span>
+<span class="kw">function</span> <span class="fn">doGet</span>(e) {
   <span class="kw">try</span> {
-    <span class="kw">const</span> data  = JSON.parse(e.postData.contents);
-    <span class="kw">const</span> sheet = SpreadsheetApp
-      .getActiveSpreadsheet()
-      .getSheetByName(SHEET_NAME);
-
-    sheet.appendRow([
-      data.vendor      || <span class="str">''</span>,
-      data.amount      || <span class="str">''</span>,
-      data.chequeDate  || <span class="str">''</span>,
-      data.reminderDate|| <span class="str">''</span>,
-      data.accountNo   || <span class="str">''</span>,
-      data.bankName    || <span class="str">''</span>,
-      data.micrCode    || <span class="str">''</span>,
-      <span class="str">'Pending'</span>,
-      <span class="kw">new</span> Date().toLocaleString()
-    ]);
-
-    <span class="kw">return</span> ContentService
-      .createTextOutput(JSON.stringify({ ok: <span class="kw">true</span> }))
-      .setMimeType(ContentService.MimeType.JSON);
-
+    <span class="kw">if</span> (e.parameter && e.parameter.data) {
+      <span class="cm">// Data sent as URL parameter</span>
+      <span class="kw">const</span> data = JSON.parse(decodeURIComponent(e.parameter.data));
+      <span class="fn">appendToSheet</span>(data);
+      <span class="kw">return</span> <span class="fn">corsResponse</span>({ ok: <span class="kw">true</span>, method: <span class="str">'GET'</span> });
+    }
+    <span class="cm">// Health check when no data</span>
+    <span class="kw">return</span> <span class="fn">corsResponse</span>({ status: <span class="str">'Cheque Tracker running'</span>, ok: <span class="kw">true</span> });
   } <span class="kw">catch</span>(err) {
-    <span class="kw">return</span> ContentService
-      .createTextOutput(JSON.stringify({ ok: <span class="kw">false</span>, error: err.message }))
-      .setMimeType(ContentService.MimeType.JSON);
+    <span class="kw">return</span> <span class="fn">corsResponse</span>({ ok: <span class="kw">false</span>, error: err.message });
   }
 }
 
-<span class="cm">// ── doGet: health check (visit URL to test) ──</span>
-<span class="kw">function</span> <span class="fn">doGet</span>() {
-  <span class="kw">return</span> ContentService
-    .createTextOutput(JSON.stringify({ status: <span class="str">'Cheque Tracker is running'</span> }))
-    .setMimeType(ContentService.MimeType.JSON);
+<span class="cm">// ── doPost: handles POST requests ──</span>
+<span class="kw">function</span> <span class="fn">doPost</span>(e) {
+  <span class="kw">try</span> {
+    <span class="kw">const</span> data = JSON.parse(e.postData.contents);
+    <span class="fn">appendToSheet</span>(data);
+    <span class="kw">return</span> <span class="fn">corsResponse</span>({ ok: <span class="kw">true</span>, method: <span class="str">'POST'</span> });
+  } <span class="kw">catch</span>(err) {
+    <span class="kw">return</span> <span class="fn">corsResponse</span>({ ok: <span class="kw">false</span>, error: err.message });
+  }
+}
+
+<span class="cm">// ── appendToSheet: shared logic for doGet and doPost ──</span>
+<span class="kw">function</span> <span class="fn">appendToSheet</span>(data) {
+  <span class="kw">const</span> sheet = SpreadsheetApp
+    .getActiveSpreadsheet()
+    .getSheetByName(SHEET_NAME);
+
+  <span class="cm">// Auto-create headers if sheet is empty</span>
+  <span class="kw">if</span> (sheet.getLastRow() === 0) {
+    sheet.appendRow([
+      <span class="str">'Vendor'</span>, <span class="str">'Amount'</span>, <span class="str">'Cheque Date'</span>, <span class="str">'Reminder Date'</span>,
+      <span class="str">'Account No'</span>, <span class="str">'Bank'</span>, <span class="str">'MICR Code'</span>, <span class="str">'Status'</span>, <span class="str">'Saved At'</span>
+    ]);
+  }
+
+  sheet.appendRow([
+    data.vendor       || <span class="str">''</span>,
+    data.amount       || <span class="str">''</span>,
+    data.chequeDate   || <span class="str">''</span>,
+    data.reminderDate || <span class="str">''</span>,
+    data.accountNo    || <span class="str">''</span>,
+    data.bankName     || <span class="str">''</span>,
+    data.micrCode     || <span class="str">''</span>,
+    <span class="str">'Pending'</span>,
+    <span class="kw">new</span> Date().toLocaleString()
+  ]);
 }
 
 <span class="cm">// ── checkReminders: run daily via trigger ──</span>
@@ -423,38 +446,24 @@ code{background:#1a1a2e;color:#a5b4fc;padding:2px 6px;border-radius:4px;font-fam
   today.setHours(0, 0, 0, 0);
 
   rows.slice(1).forEach((row, i) => {
-    <span class="kw">if</span> (row[6] === <span class="str">'Notified'</span>) <span class="kw">return</span>; <span class="cm">// skip already notified</span>
-
+    <span class="kw">if</span> (row[7] === <span class="str">'Notified'</span>) <span class="kw">return</span>;
     <span class="kw">const</span> remDate = <span class="kw">new</span> Date(row[3]);
     remDate.setHours(0, 0, 0, 0);
-    <span class="kw">const</span> diffDays = (remDate - today) / 86400000;
-
-    <span class="kw">if</span> (diffDays >= 0 && diffDays < 1) {
-      <span class="kw">const</span> subject = <span class="str">`⚠️ Cheque reminder: ${row[0]} due in ${DAYS_BEFORE} days`</span>;
-      <span class="kw">const</span> body =
-        <span class="str">`Hello,\n\n`</span> +
-        <span class="str">`This is a reminder that the following cheque is due soon:\n\n`</span> +
-        <span class="str">`  Vendor      : ${row[0]}\n`</span> +
-        <span class="str">`  Amount      : ₹${row[1]}\n`</span> +
-        <span class="str">`  Cheque date : ${row[2]}\n`</span> +
-        <span class="str">`  Bank        : ${row[5] || 'N/A'}\n\n`</span> +
-        <span class="str">`Please ensure payment is arranged.\n\nCheque Tracker`</span>;
-
-      GmailApp.sendEmail(NOTIFY_EMAIL, subject, body);
-
-      <span class="cm">// Mark as notified in column G (index 6)</span>
-      sheet.getRange(i + 2, 7).setValue(<span class="str">'Notified'</span>);
+    <span class="kw">const</span> diff = (remDate - today) / 86400000;
+    <span class="kw">if</span> (diff >= 0 && diff < 1) {
+      GmailApp.sendEmail(
+        NOTIFY_EMAIL,
+        <span class="str">`⚠️ Cheque due in ${DAYS_BEFORE} days: ${row[0]}`</span>,
+        <span class="str">`Vendor: ${row[0]}\nAmount: ₹${row[1]}\nDue: ${row[2]}\nMICR: ${row[6]||'N/A'}\nBank: ${row[5]||'N/A'}`</span>
+      );
+      sheet.getRange(i + 2, 8).setValue(<span class="str">'Notified'</span>);
     }
   });
 }
 
-<span class="cm">// ── sendTestEmail: run manually to verify setup ──</span>
+<span class="cm">// ── sendTestEmail: run manually once to verify Gmail works ──</span>
 <span class="kw">function</span> <span class="fn">sendTestEmail</span>() {
-  GmailApp.sendEmail(
-    NOTIFY_EMAIL,
-    <span class="str">'✅ Cheque Tracker is working!'</span>,
-    <span class="str">'Your Cheque Tracker reminder system is set up correctly.'</span>
-  );
+  GmailApp.sendEmail(NOTIFY_EMAIL, <span class="str">'✅ Cheque Tracker working!'</span>, <span class="str">'Setup is correct.'</span>);
   Logger.log(<span class="str">'Test email sent to '</span> + NOTIFY_EMAIL);
 }</div>
       </div>
@@ -823,23 +832,72 @@ function renderResult() {
 async function saveRecord() {
   if (!extracted) return;
   const sheetUrl = document.getElementById('sheet-url').value.trim();
-  records.push({ ...extracted, status:'Pending', savedAt: new Date().toISOString(), id: Date.now() });
-  localStorage.setItem('ct_records', JSON.stringify(records));
-  log('Saved to local records.', 'ok');
 
-  if (sheetUrl) {
-    document.getElementById('save-label').textContent = 'Saving to Sheets...';
-    document.getElementById('save-spin').classList.remove('hidden');
-    try {
-      await fetch(sheetUrl, { method:'POST', mode:'no-cors', headers:{'Content-Type':'application/json'}, body: JSON.stringify(extracted) });
-      log('Saved to Google Sheets ✓', 'ok');
-    } catch(e) { log('Sheets error: ' + e.message, 'err'); }
-    finally {
-      document.getElementById('save-label').textContent = '💾 Save to Google Sheets';
-      document.getElementById('save-spin').classList.add('hidden');
+  // Always save locally first
+  const record = { ...extracted, status:'Pending', savedAt: new Date().toISOString(), id: Date.now() };
+  records.push(record);
+  localStorage.setItem('ct_records', JSON.stringify(records));
+  slog('Saved locally ✓', 'ok');
+
+  if (!sheetUrl) {
+    slog('No Sheets URL entered — paste your Apps Script URL in the config box above.', 'err');
+    alert('Please paste your Google Apps Script Web App URL in the config box at the top of this page.');
+    return;
+  }
+
+  slog('Sending to Google Sheets...', 'inf');
+  document.getElementById('save-label').textContent = 'Saving to Sheets...';
+  document.getElementById('save-spin').classList.remove('hidden');
+
+  // Build payload explicitly with all fields
+  const payload = {
+    vendor:       extracted.vendor       || '',
+    amount:       extracted.amount       || '',
+    chequeDate:   extracted.chequeDate   || '',
+    reminderDate: extracted.reminderDate || '',
+    accountNo:    extracted.accountNo    || '',
+    bankName:     extracted.bankName     || '',
+    micrCode:     extracted.micrCode     || '',
+  };
+  slog('Payload: ' + JSON.stringify(payload), 'inf');
+
+  try {
+    // Use fetch via a GET request with data encoded as URL param
+    // This avoids CORS preflight issues with Apps Script
+    const encoded = encodeURIComponent(JSON.stringify(payload));
+    const getUrl  = sheetUrl + '?data=' + encoded;
+
+    const res = await fetch(getUrl, { method: 'GET', mode: 'cors' });
+    const text = await res.text();
+    slog('Sheets response: ' + text, 'ok');
+
+    let json;
+    try { json = JSON.parse(text); } catch(e) { json = { ok: true }; }
+
+    if (json.ok !== false) {
+      slog('✓ Saved to Google Sheets successfully!', 'ok');
+      document.getElementById('save-label').textContent = '✓ Saved!';
+      setTimeout(() => { document.getElementById('save-label').textContent = '💾 Save to Google Sheets'; }, 2000);
+    } else {
+      throw new Error(json.error || 'Unknown error from Apps Script');
     }
-  } else {
-    log('No Sheets URL set — saved locally only. Add URL in config above.', 'inf');
+  } catch(e) {
+    slog('Sheets save failed: ' + e.message, 'err');
+    slog('Trying fallback method (no-cors POST)...', 'inf');
+    // Fallback: POST with no-cors (silent but works if Apps Script is configured correctly)
+    try {
+      await fetch(sheetUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(payload)
+      });
+      slog('Fallback POST sent (cannot confirm receipt — check your Sheet)', 'ok');
+    } catch(e2) {
+      slog('Both methods failed: ' + e2.message, 'err');
+    }
+  } finally {
+    document.getElementById('save-spin').classList.add('hidden');
   }
 }
 
