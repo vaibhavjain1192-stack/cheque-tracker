@@ -743,16 +743,20 @@ async function extractData() {
   try {
     slog('Calling Gemini 2.5 Flash API...', 'inf');
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-    const prompt = `Analyze this cheque image and extract the following fields. Return ONLY a valid JSON object with no markdown, no explanation:
-{
-  "vendor": "full payee or vendor name written on cheque",
-  "amount": "numeric amount as string without currency symbol",
-  "chequeDate": "date in YYYY-MM-DD format",
-  "accountNo": "cheque number printed on the cheque if visible, else null",
-  "bankName": "bank name printed on cheque, else null",
-  "micrCode": "look at the MICR line at the very bottom of the cheque. It contains numbers printed in magnetic ink between pipe or block symbols that look like | |. Find the first group of digits between the first pair of | | symbols and return only the first 6 digits from that group. Return just those 6 digits as a string, nothing else."
-}
-If a field is not visible or unclear, use null.`;
+    const prompt = `You are a cheque data extractor. Look at this cheque image carefully.
+
+IMPORTANT: Reply with ONLY a raw JSON object. No markdown. No backticks. No explanation. Start your reply with { and end with }.
+
+Extract these fields:
+- vendor: the payee name written after "Pay" on the cheque
+- amount: the numeric amount (digits only, no currency symbol or commas)
+- chequeDate: the date written on the cheque in YYYY-MM-DD format
+- accountNo: the cheque number (usually printed bottom-left), or null
+- bankName: the bank name printed on the cheque, or null
+- micrCode: look at the MICR line at the very bottom of the cheque. Numbers are printed between | symbols. Extract the first 6 digits from between the FIRST pair of | | symbols. Return only those 6 digits, or null if not visible.
+
+Example output:
+{"vendor":"Impal","amount":"10259","chequeDate":"2026-06-22","accountNo":"03991100002443","bankName":"Punjab and Sind Bank","micrCode":"000031"}`;
 
     const res = await fetch(url, {
       method: 'POST',
@@ -762,7 +766,7 @@ If a field is not visible or unclear, use null.`;
           { inline_data: { mime_type: curMime, data: curB64 } },
           { text: prompt }
         ]}],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 1024 }
+        generationConfig: { temperature: 0, maxOutputTokens: 2048 }
       })
     });
 
@@ -775,16 +779,61 @@ If a field is not visible or unclear, use null.`;
     const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     slog('Response received! Raw: ' + raw.substring(0, 80) + '...', 'ok');
 
-    // Robust JSON extraction — handles markdown, extra text, partial wraps
-    let cleaned = raw;
-    // Remove markdown code fences
-    cleaned = cleaned.replace(/```json\s*/gi, '').replace(/```\s*/g, '');
-    // Try to find a JSON object anywhere in the response
-    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('No JSON object found in Gemini response. Raw: ' + raw.substring(0, 200));
-    cleaned = jsonMatch[0];
+    // Robust JSON extraction — handles markdown fences, extra text, truncation
+    let cleaned = raw.trim();
+    slog('Parsing extracted text...', 'inf');
+
+    // Step 1: strip markdown code fences
+    cleaned = cleaned.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/g, '').trim();
+
+    // Step 2: find the JSON object — use greedy match from first { to last }
+    const firstBrace = cleaned.indexOf('{');
+    const lastBrace  = cleaned.lastIndexOf('}');
+    if (firstBrace === -1) {
+      throw new Error('No JSON found. Gemini said: ' + raw.substring(0, 150));
+    }
+
+    if (lastBrace > firstBrace) {
+      // Complete JSON found
+      cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+    } else {
+      // Truncated — close the object manually and fill missing fields with null
+      slog('Response was truncated — attempting recovery...', 'inf');
+      cleaned = cleaned.substring(firstBrace);
+      // Count unclosed quotes: if odd number, close the string
+      const quoteCount = (cleaned.match(/(?<!\\)"/g) || []).length;
+      if (quoteCount % 2 !== 0) cleaned += '"';
+      // Close any open value with null if last char isn't a value terminator
+      const lastChar = cleaned.trimEnd().slice(-1);
+      if (!['"}', '",', '"', '}'].includes(lastChar) && lastChar !== '}') {
+        cleaned += ': null';
+      }
+      cleaned += '}';
+    }
+
     slog('Parsing JSON...', 'inf');
-    extracted = JSON.parse(cleaned);
+    try {
+      extracted = JSON.parse(cleaned);
+    } catch(parseErr) {
+      // Last resort: extract field values with regex
+      slog('JSON parse failed, using regex fallback...', 'inf');
+      const get = (key) => {
+        const m = raw.match(new RegExp('"' + key + '"\s*:\s*"([^"]*)"'));
+        return m ? m[1] : null;
+      };
+      extracted = {
+        vendor:     get('vendor'),
+        amount:     get('amount'),
+        chequeDate: get('chequeDate'),
+        accountNo:  get('accountNo'),
+        bankName:   get('bankName'),
+        micrCode:   get('micrCode'),
+      };
+      if (!extracted.vendor && !extracted.amount) {
+        throw new Error('Could not parse response. Try uploading a clearer image. Raw: ' + raw.substring(0, 200));
+      }
+      slog('Recovered data via regex fallback ✓', 'ok');
+    }
 
     if (extracted.chequeDate) {
       const d = new Date(extracted.chequeDate);
