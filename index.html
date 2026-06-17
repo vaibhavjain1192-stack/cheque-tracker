@@ -184,12 +184,25 @@ code{background:#1a1a2e;color:#a5b4fc;padding:2px 6px;border-radius:4px;font-fam
             <div class="label">Gemini API key <span style="color:var(--green);font-size:10px">(free at aistudio.google.com)</span></div>
             <input type="password" id="api-key" class="mono" placeholder="AIza...">
           </div>
-          <div class="field" style="max-width:200px">
-            <div class="label">Google Sheets URL <span style="color:var(--muted);font-size:10px">(optional)</span></div>
-            <input type="url" id="sheet-url" class="mono" placeholder="https://script.google.com/...">
+          <div class="field">
+            <div class="label">Google Form submit URL <span style="color:var(--muted);font-size:10px">(see Setup Guide tab)</span></div>
+            <input type="url" id="sheet-url" class="mono" placeholder="https://docs.google.com/forms/d/e/XXXX/formResponse">
           </div>
         </div>
-        <div style="margin-top:8px;font-size:11px;color:var(--muted)">Keys are stored only in your browser. See <strong>Setup Guide</strong> tab for how to get these.</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px">
+          <div class="field"><div class="label" style="font-size:10px">Entry ID: vendor</div><input type="text" id="eid-vendor" class="mono" placeholder="entry.XXXXXXXXX"></div>
+          <div class="field"><div class="label" style="font-size:10px">Entry ID: amount</div><input type="text" id="eid-amount" class="mono" placeholder="entry.XXXXXXXXX"></div>
+          <div class="field"><div class="label" style="font-size:10px">Entry ID: chequeDate</div><input type="text" id="eid-chequeDate" class="mono" placeholder="entry.XXXXXXXXX"></div>
+          <div class="field"><div class="label" style="font-size:10px">Entry ID: reminderDate</div><input type="text" id="eid-reminderDate" class="mono" placeholder="entry.XXXXXXXXX"></div>
+          <div class="field"><div class="label" style="font-size:10px">Entry ID: accountNo</div><input type="text" id="eid-accountNo" class="mono" placeholder="entry.XXXXXXXXX"></div>
+          <div class="field"><div class="label" style="font-size:10px">Entry ID: bankName</div><input type="text" id="eid-bankName" class="mono" placeholder="entry.XXXXXXXXX"></div>
+          <div class="field"><div class="label" style="font-size:10px">Entry ID: micrCode</div><input type="text" id="eid-micrCode" class="mono" placeholder="entry.XXXXXXXXX"></div>
+          <div class="field" style="display:flex;align-items:flex-end;gap:8px">
+            <button class="btn btn-ghost btn-sm" onclick="saveFormConfig()">&#x1F4BE; Save config</button>
+            <span id="config-saved" style="font-size:11px;color:var(--green);display:none">&#x2713; Saved!</span>
+          </div>
+        </div>
+        <div style="margin-top:8px;font-size:11px;color:var(--muted)">All settings stored only in your browser. See <strong>Setup Guide</strong> tab for step-by-step instructions.</div>
       </div>
 
       <!-- Upload -->
@@ -298,62 +311,56 @@ code{background:#1a1a2e;color:#a5b4fc;padding:2px 6px;border-radius:4px;font-fam
           <div class="step">
             <div class="step-num" id="sn2">2</div>
             <div class="step-body">
-              <h3>Create your Google Sheet</h3>
-              <p>Go to <a href="https://sheets.google.com" target="_blank"><strong>sheets.google.com</strong></a> &rarr; create a blank spreadsheet.</p>
-              <p style="margin-top:6px">In <strong>Row 1</strong>, add exactly these headers (one per column):</p>
-              <div class="codeblock"><span class="str">Vendor | Amount | Cheque Date | Reminder Date | Account No | Bank | MICR Code | Status | Uploaded At</span></div>
-              <p style="margin-top:6px;font-size:12px;color:var(--muted)">Tip: Copy the sheet URL from your browser &mdash; you'll need it in Step 4.</p>
+              <h3>Create a Google Form</h3>
+              <p>Go to <a href="https://forms.google.com" target="_blank"><strong>forms.google.com</strong></a> &rarr; click <strong>+</strong> Blank form. Add <strong>7 questions</strong>, all as <strong>Short answer</strong> type, with exactly these titles (copy-paste each):</p>
+              <div class="codeblock">vendor
+amount
+chequeDate
+reminderDate
+accountNo
+bankName
+micrCode</div>
             </div>
           </div>
 
           <div class="step">
             <div class="step-num" id="sn3">3</div>
             <div class="step-body">
-              <h3>Open Apps Script editor</h3>
-              <p>In your Google Sheet: click <strong>Extensions</strong> &rarr; <strong>Apps Script</strong>.</p>
-              <ul>
-                <li>Delete the default <code>function myFunction() {}</code> code</li>
-                <li>Go to the <strong>Apps Script Code</strong> tab (sidebar) &rarr; copy the full script</li>
-                <li>Paste it into the Apps Script editor</li>
-                <li>Click <strong>Save</strong> (&#x1F4BE; icon or Ctrl+S)</li>
-              </ul>
+              <h3>Link Form to Google Sheets</h3>
+              <p>In the Form editor &rarr; click <strong>Responses</strong> tab &rarr; click the green <strong>Sheets icon</strong> &rarr; Create new spreadsheet. Every submission now auto-appears as a row.</p>
             </div>
           </div>
 
           <div class="step">
             <div class="step-num" id="sn4">4</div>
             <div class="step-body">
-              <h3>Deploy as a Web App</h3>
-              <p>In Apps Script: click <strong>Deploy</strong> &rarr; <strong>New deployment</strong> &rarr; select type <strong>Web app</strong>.</p>
-              <ul>
-                <li>Description: <code>Cheque Tracker API</code></li>
-                <li>Execute as: <strong>Me</strong></li>
-                <li>Who has access: <strong>Anyone</strong></li>
-                <li>Click <strong>Deploy</strong> &rarr; <strong>Authorize access</strong> (grant Gmail + Sheets permissions)</li>
-                <li>Copy the <strong>Web app URL</strong> (looks like <code>https://script.google.com/macros/s/AKfy.../exec</code>)</li>
-                <li>Paste it into the <strong>Google Sheets URL</strong> field on the Upload tab</li>
-              </ul>
+              <h3>Get the Form URL and entry IDs</h3>
+              <p><strong>Step 4a &mdash; Submit URL:</strong> Click the <strong>eye/preview icon</strong> in the form. Copy the browser URL (ends in <code>/viewform</code>). Change <code>viewform</code> to <code>formResponse</code>. Paste into the <em>Google Form submit URL</em> box on the Upload tab.</p>
+              <p style="margin-top:8px"><strong>Step 4b &mdash; Entry IDs:</strong> On the preview page, press <strong>Ctrl+U</strong> (View Source). Press <strong>Ctrl+F</strong> and search <code>entry.</code>. You will see 7 entries like <code>entry.123456789</code> in order. Paste each into the matching field on the Upload tab.</p>
+              <div class="codeblock"><span class="cm">What to look for in the page source:</span>
+<span class="str">"entry.XXXXXXXXX"</span>  <span class="cm">← paste into vendor field</span>
+<span class="str">"entry.XXXXXXXXX"</span>  <span class="cm">← paste into amount field</span>
+<span class="str">"entry.XXXXXXXXX"</span>  <span class="cm">← paste into chequeDate field</span>
+<span class="str">"entry.XXXXXXXXX"</span>  <span class="cm">← paste into reminderDate field</span>
+<span class="str">"entry.XXXXXXXXX"</span>  <span class="cm">← paste into accountNo field</span>
+<span class="str">"entry.XXXXXXXXX"</span>  <span class="cm">← paste into bankName field</span>
+<span class="str">"entry.XXXXXXXXX"</span>  <span class="cm">← paste into micrCode field</span></div>
+              <p style="margin-top:8px">Then click <strong>Save config</strong> on the Upload tab.</p>
             </div>
           </div>
 
           <div class="step">
             <div class="step-num" id="sn5">5</div>
             <div class="step-body">
-              <h3>Set up the daily reminder trigger</h3>
-              <p>In Apps Script: click the <strong>clock icon</strong> (Triggers) in the left sidebar &rarr; <strong>+ Add Trigger</strong>.</p>
-              <ul>
-                <li>Choose function: <strong>checkReminders</strong></li>
-                <li>Event source: <strong>Time-driven</strong></li>
-                <li>Type: <strong>Day timer</strong></li>
-                <li>Time: <strong>9am to 10am</strong></li>
-                <li>Click <strong>Save</strong></li>
-              </ul>
-              <p style="margin-top:6px;color:var(--green);font-size:12px">&#x2713; Done! Every morning at 9 AM, the script checks all cheques and emails you 2 days before each one is due.</p>
+              <h3>Set up daily email reminder (Apps Script)</h3>
+              <p>Open your linked Google Sheet &rarr; <strong>Extensions &rarr; Apps Script</strong>. Paste the code from the <strong>Apps Script Code</strong> tab. Deploy as Web App. Then add a daily trigger: clock icon &rarr; <code>checkReminders</code> &rarr; Day timer &rarr; 9 AM.</p>
+              <p style="margin-top:6px;color:var(--green);font-size:12px">&#x2713; Done! The Form handles saving (no CORS issues), Apps Script handles email reminders.</p>
             </div>
           </div>
 
         </div>
       </div>
+    </div>
     </div>
 
     <!-- ══ APPS SCRIPT TAB ══ -->
@@ -657,6 +664,17 @@ let curB64 = null, curMime = 'image/jpeg', extracted = null;
 let tokenLog = JSON.parse(localStorage.getItem('ct_tokens') || '[]');
 const FREE_LIMIT = 1500; // Gemini free tier daily limit
 
+function saveFormConfig() {
+  ['vendor','amount','chequeDate','reminderDate','accountNo','bankName','micrCode'].forEach(f => {
+    const el = document.getElementById('eid-' + f);
+    if (el) localStorage.setItem('ct_eid_' + f, el.value.trim());
+  });
+  const url = document.getElementById('sheet-url').value.trim();
+  if (url) localStorage.setItem('ct_sheeturl', url);
+  const saved = document.getElementById('config-saved');
+  if (saved) { saved.style.display = 'inline'; setTimeout(() => saved.style.display = 'none', 2000); }
+}
+
 function slog(msg, type='inf') {
   const panel = document.getElementById('status-panel');
   const lines = document.getElementById('status-lines');
@@ -675,6 +693,11 @@ window.onload = () => {
   const dn = localStorage.getItem('ct_days');
   if (k) document.getElementById('api-key').value = k;
   if (u) document.getElementById('sheet-url').value = u;
+  ['vendor','amount','chequeDate','reminderDate','accountNo','bankName','micrCode'].forEach(f => {
+    const saved = localStorage.getItem('ct_eid_' + f);
+    const el = document.getElementById('eid-' + f);
+    if (saved && el) el.value = saved;
+  });
   if (em) document.getElementById('notif-email').value = em;
   if (dn) document.getElementById('notif-days').value = dn;
   renderRecords(); renderReminders(); updateTokenBadge();
@@ -880,7 +903,6 @@ function renderResult() {
 
 async function saveRecord() {
   if (!extracted) return;
-  const sheetUrl = document.getElementById('sheet-url').value.trim();
 
   // Always save locally first
   const record = { ...extracted, status:'Pending', savedAt: new Date().toISOString(), id: Date.now() };
@@ -888,67 +910,64 @@ async function saveRecord() {
   localStorage.setItem('ct_records', JSON.stringify(records));
   slog('Saved locally ✓', 'ok');
 
-  if (!sheetUrl) {
-    slog('No Sheets URL entered — paste your Apps Script URL in the config box above.', 'err');
-    alert('Please paste your Google Apps Script Web App URL in the config box at the top of this page.');
+  const formUrl = document.getElementById('sheet-url').value.trim();
+  if (!formUrl) {
+    slog('No Google Form URL configured. See Setup Guide tab.', 'inf');
     return;
   }
 
-  slog('Sending to Google Sheets...', 'inf');
+  // Read entry IDs
+  const eids = {
+    vendor:       document.getElementById('eid-vendor').value.trim(),
+    amount:       document.getElementById('eid-amount').value.trim(),
+    chequeDate:   document.getElementById('eid-chequeDate').value.trim(),
+    reminderDate: document.getElementById('eid-reminderDate').value.trim(),
+    accountNo:    document.getElementById('eid-accountNo').value.trim(),
+    bankName:     document.getElementById('eid-bankName').value.trim(),
+    micrCode:     document.getElementById('eid-micrCode').value.trim(),
+  };
+
+  const missingEids = Object.entries(eids).filter(([k,v]) => !v).map(([k]) => k);
+  if (missingEids.length > 0) {
+    slog('Missing entry IDs: ' + missingEids.join(', ') + '. Fill in config above.', 'err');
+    return;
+  }
+
+  slog('Submitting to Google Sheets via Form...', 'inf');
   document.getElementById('save-label').textContent = 'Saving to Sheets...';
   document.getElementById('save-spin').classList.remove('hidden');
 
-  // Build payload explicitly with all fields
-  const payload = {
-    vendor:       extracted.vendor       || '',
-    amount:       extracted.amount       || '',
-    chequeDate:   extracted.chequeDate   || '',
-    reminderDate: extracted.reminderDate || '',
-    accountNo:    extracted.accountNo    || '',
-    bankName:     extracted.bankName     || '',
-    micrCode:     extracted.micrCode     || '',
-  };
-  slog('Payload: ' + JSON.stringify(payload), 'inf');
+  // Build form data — Google Forms accepts POST with no-cors and URLEncoded body
+  const formData = new URLSearchParams();
+  formData.append(eids.vendor,       extracted.vendor       || '');
+  formData.append(eids.amount,       extracted.amount       || '');
+  formData.append(eids.chequeDate,   extracted.chequeDate   || '');
+  formData.append(eids.reminderDate, extracted.reminderDate || '');
+  formData.append(eids.accountNo,    extracted.accountNo    || '');
+  formData.append(eids.bankName,     extracted.bankName     || '');
+  formData.append(eids.micrCode,     extracted.micrCode     || '');
+
+  slog('Payload ready, posting...', 'inf');
 
   try {
-    // Use fetch via a GET request with data encoded as URL param
-    // This avoids CORS preflight issues with Apps Script
-    const encoded = encodeURIComponent(JSON.stringify(payload));
-    const getUrl  = sheetUrl + '?data=' + encoded;
-
-    const res = await fetch(getUrl, { method: 'GET', mode: 'cors' });
-    const text = await res.text();
-    slog('Sheets response: ' + text, 'ok');
-
-    let json;
-    try { json = JSON.parse(text); } catch(e) { json = { ok: true }; }
-
-    if (json.ok !== false) {
-      slog('✓ Saved to Google Sheets successfully!', 'ok');
-      document.getElementById('save-label').textContent = '✓ Saved!';
-      setTimeout(() => { document.getElementById('save-label').textContent = '💾 Save to Google Sheets'; }, 2000);
-    } else {
-      throw new Error(json.error || 'Unknown error from Apps Script');
-    }
-  } catch(e) {
-    slog('Sheets save failed: ' + e.message, 'err');
-    slog('Trying fallback method (no-cors POST)...', 'inf');
-    // Fallback: POST with no-cors (silent but works if Apps Script is configured correctly)
-    try {
-      await fetch(sheetUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify(payload)
-      });
-      slog('Fallback POST sent (cannot confirm receipt — check your Sheet)', 'ok');
-    } catch(e2) {
-      slog('Both methods failed: ' + e2.message, 'err');
-    }
+    // Google Forms accepts no-cors POST from any origin — this is the key fix
+    await fetch(formUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: formData.toString()
+    });
+    // no-cors means we can't read the response, but if no exception = success
+    slog('✓ Submitted to Google Sheets via Form! Check your Sheet.', 'ok');
+    document.getElementById('save-label').textContent = '✓ Saved to Sheets!';
+    setTimeout(() => { document.getElementById('save-label').textContent = '💾 Save to Google Sheets'; }, 3000);
+  } catch(err) {
+    slog('Form submit error: ' + err.message, 'err');
   } finally {
     document.getElementById('save-spin').classList.add('hidden');
   }
 }
+
 
 function renderRecords() {
   const today = new Date(); today.setHours(0,0,0,0);
