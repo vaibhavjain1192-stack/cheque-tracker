@@ -644,10 +644,7 @@ async function extractData() {
   document.getElementById('result-card').classList.add('hidden');
   document.getElementById('logbox').innerHTML = '';
 
-  try {
-    slog('Calling Gemini Vision…', 'inf');
-
-    const prompt = `You are a cheque data extractor. Look at this cheque image carefully.
+  const prompt = `You are a cheque data extractor. Look at this cheque image carefully.
 
 IMPORTANT: Reply with ONLY a raw JSON object. No markdown. No backticks. No explanation. Start your reply with { and end with }.
 
@@ -662,64 +659,113 @@ Extract these fields:
 Example output:
 {"vendor":"Impal","amount":"10259","chequeDate":"2026-06-22","accountNo":"03991100002443","bankName":"Punjab and Sind Bank","micrCode":"000031"}`;
 
-    // Call via Cloudflare Worker — API key stays secure on the server
-    const res = await fetch(CONFIG.workerUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [
-          { inline_data: { mime_type: curMime, data: curB64 } },
-          { text: prompt }
-        ]}],
-        generationConfig: { temperature: 0, maxOutputTokens: 2048 }
-      })
-    });
+  const body = {
+    contents: [{ parts: [
+      { inline_data: { mime_type: curMime, data: curB64 } },
+      { text: prompt }
+    ]}],
+    generationConfig: { temperature: 0, maxOutputTokens: 2048 }
+  };
 
-    if (!res.ok) { const e = await res.json(); throw new Error(e.error?.message || `HTTP ${res.status}`); }
+  const MAX_RETRIES = 3;
+  let success = false;
 
-    const data = await res.json();
-    const raw  = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    slog('Response received, parsing…', 'ok');
+  try {
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        if (attempt > 1) {
+          const wait = attempt * 2000;
+          slog(`Retrying… attempt ${attempt}/${MAX_RETRIES} (waiting ${wait/1000}s)`, 'inf');
+          await new Promise(r => setTimeout(r, wait));
+        } else {
+          slog('Calling Gemini via Cloudflare Worker…', 'inf');
+        }
 
-    // Capture token usage
-    const usage = data.usageMetadata || {};
-    const tokIn = usage.promptTokenCount || 0, tokOut = usage.candidatesTokenCount || 0;
-    const tokTotal = usage.totalTokenCount || (tokIn + tokOut);
-    tokenLog.push({ date: new Date().toISOString(), input: tokIn, output: tokOut, total: tokTotal });
-    localStorage.setItem('ct_tokens', JSON.stringify(tokenLog));
-    slog(`Tokens used: ${tokTotal} (in:${tokIn} out:${tokOut})`, 'ok');
-    updateTokenUI();
+        // 30-second timeout per attempt
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 30000);
+        let res;
+        try {
+          res = await fetch(CONFIG.workerUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+            signal: controller.signal
+          });
+        } finally { clearTimeout(timer); }
 
-    // Parse JSON robustly
-    let cleaned = raw.trim().replace(/^```json\s*/i,'').replace(/^```\s*/i,'').replace(/```\s*$/g,'').trim();
-    const fb = cleaned.indexOf('{'), lb = cleaned.lastIndexOf('}');
-    if (fb === -1) throw new Error('No JSON in response: ' + raw.substring(0,120));
-    cleaned = lb > fb ? cleaned.substring(fb, lb+1) : cleaned.substring(fb) + '}';
+        if (!res.ok) {
+          const t = await res.text();
+          throw new Error(`Worker HTTP ${res.status}: ${t.substring(0,100)}`);
+        }
 
-    try { extracted = JSON.parse(cleaned); }
-    catch {
-      const get = k => { const m = raw.match(new RegExp('"'+k+'"\\s*:\\s*"([^"]*)"')); return m ? m[1] : null; };
-      extracted = { vendor:get('vendor'), amount:get('amount'), chequeDate:get('chequeDate'), accountNo:get('accountNo'), bankName:get('bankName'), micrCode:get('micrCode') };
-      if (!extracted.vendor && !extracted.amount) throw new Error('Could not parse response');
+        const data = await res.json();
+
+        // Validate response
+        if (!data.candidates?.[0]) {
+          if (data.error) throw new Error('Gemini: ' + data.error.message);
+          if (data.promptFeedback?.blockReason) throw new Error('Blocked: ' + data.promptFeedback.blockReason);
+          const preview = JSON.stringify(data).substring(0,120);
+          throw new Error('No candidates in response: ' + preview);
+        }
+
+        const raw = data.candidates[0]?.content?.parts?.[0]?.text || '';
+        if (!raw.trim()) throw new Error('Empty text from Gemini — transient, retrying');
+
+        slog('Response received, parsing…', 'ok');
+
+        // Token tracking
+        const usage = data.usageMetadata || {};
+        const tokIn = usage.promptTokenCount || 0, tokOut = usage.candidatesTokenCount || 0;
+        const tokTotal = usage.totalTokenCount || (tokIn + tokOut);
+        if (tokTotal > 0) {
+          tokenLog.push({ date: new Date().toISOString(), input: tokIn, output: tokOut, total: tokTotal });
+          localStorage.setItem('ct_tokens', JSON.stringify(tokenLog));
+          slog('Tokens: ' + tokTotal + ' (in:' + tokIn + ' out:' + tokOut + ')', 'ok');
+          updateTokenUI();
+        }
+
+        // Parse JSON
+        let cleaned = raw.trim().replace(/^```json\s*/i,'').replace(/^```\s*/i,'').replace(/```\s*$/g,'').trim();
+        const fb = cleaned.indexOf('{'), lb = cleaned.lastIndexOf('}');
+        if (fb === -1) throw new Error('No JSON in: ' + raw.substring(0,100));
+        cleaned = lb > fb ? cleaned.substring(fb, lb+1) : cleaned.substring(fb) + '}';
+
+        try { extracted = JSON.parse(cleaned); }
+        catch {
+          const get = k => { const m = raw.match(new RegExp('"'+k+'"\s*:\s*"([^"]*)"')); return m?m[1]:null; };
+          extracted = { vendor:get('vendor'), amount:get('amount'), chequeDate:get('chequeDate'), accountNo:get('accountNo'), bankName:get('bankName'), micrCode:get('micrCode') };
+          if (!extracted.vendor && !extracted.amount) throw new Error('Could not parse response');
+          slog('Recovered via regex fallback ✓', 'ok');
+        }
+
+        if (extracted.chequeDate) {
+          const d = new Date(extracted.chequeDate);
+          d.setDate(d.getDate() - CONFIG.reminderDays);
+          extracted.reminderDate = d.toISOString().split('T')[0];
+        }
+
+        slog('Extraction successful! ✓', 'ok');
+        renderResult();
+        success = true;
+        break; // exit retry loop
+
+      } catch(err) {
+        const transient = err.name === 'AbortError' || ['transient','fetch','network','empty','No candidates','Empty text'].some(w => err.message.includes(w));
+        slog('Attempt ' + attempt + ' failed: ' + (err.name==='AbortError'?'Timed out (30s)':err.message), 'err');
+        if (!transient || attempt === MAX_RETRIES) {
+          slog('Tip: check Cloudflare Worker logs and ensure GEMINI_KEY is set correctly.', 'inf');
+          break;
+        }
+      }
     }
-
-    // Compute reminder date
-    if (extracted.chequeDate) {
-      const d = new Date(extracted.chequeDate);
-      d.setDate(d.getDate() - CONFIG.reminderDays);
-      extracted.reminderDate = d.toISOString().split('T')[0];
-    }
-
-    slog('Extraction successful!', 'ok');
-    renderResult();
-  } catch(err) {
-    slog('Error: ' + err.message, 'err');
   } finally {
     document.getElementById('ext-btn').disabled = false;
-    document.getElementById('ext-label').textContent = 'Extract with Gemini';
+    document.getElementById('ext-label').textContent = success ? 'Extract with Gemini' : '⟳ Try again';
     document.getElementById('ext-spin').classList.add('hidden');
   }
 }
+
 
 // ── Render result ──
 function renderResult() {
