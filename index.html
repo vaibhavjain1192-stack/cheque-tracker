@@ -442,9 +442,14 @@ tr:hover td{background:rgba(255,255,255,.01)}
 
     <!-- ══ RECORDS ══ -->
     <div id="tab-records" class="hidden">
-      <div class="page-header">
-        <div class="page-title">Records</div>
-        <div class="page-desc">All cheques saved this session.</div>
+      <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+        <div>
+          <div class="page-title">Records</div>
+          <div class="page-desc" id="records-sync-label">Loading from Google Sheets…</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="renderRecords()" style="flex-shrink:0;margin-top:4px">
+          ⟳ Refresh
+        </button>
       </div>
       <div class="stats">
         <div class="stat"><div class="stat-label">Total</div><div class="stat-val" id="s-total">0</div></div>
@@ -454,7 +459,7 @@ tr:hover td{background:rgba(255,255,255,.01)}
       <div class="card">
         <div class="tbl-wrap">
           <table>
-            <thead><tr><th>Vendor</th><th>Amount</th><th>Due date</th><th>MICR</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Vendor</th><th>Amount</th><th>Due date</th><th>Cheque No.</th><th>Acct No.</th><th>Status</th><th></th></tr></thead>
             <tbody id="records-body"></tbody>
           </table>
         </div>
@@ -538,6 +543,7 @@ tr:hover td{background:rgba(255,255,255,.01)}
 // ═══════════════════════════════════════════════════════
 const CONFIG = {
   workerUrl:   'https://cheque-proxy.vaibhavjain-1192.workers.dev',
+  sheetCsvUrl: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTS0yOkDR_XYbALalezOIL9Z-e97jSisRBZ47z6xVUHgeZxG9NV2zCJAs0te01Y-gVnl7McMkk4u6Ex/pub?gid=136761614&single=true&output=csv',
   formUrl:     'https://docs.google.com/forms/d/e/1FAIpQLSd-vBRfFbQO6gQBAqYV-c4DTf35BmreSfeRssgiNLziJhqrZw/formResponse',  // ← paste formResponse URL
   entries: {
     vendor:       'entry.1109188432',
@@ -777,8 +783,8 @@ function renderResult() {
     <div class="r-item"><div class="r-label">Cheque date</div><div class="r-val">${extracted.chequeDate||'—'}</div></div>
     <div class="r-item"><div class="r-label">Reminder date</div><div class="r-val">${extracted.reminderDate||'—'}</div></div>
     ${extracted.bankName ? `<div class="r-item"><div class="r-label">Bank</div><div class="r-val">${extracted.bankName}</div></div>` : ''}
-    ${extracted.accountNo ? `<div class="r-item"><div class="r-label">Cheque no.</div><div class="r-val">${extracted.accountNo}</div></div>` : ''}
-    ${extracted.micrCode ? `<div class="r-item r-full"><div class="r-label">MICR code (first 6 digits)</div><div class="r-val micr-val">${extracted.micrCode}</div></div>` : ''}
+    ${extracted.accountNo ? `<div class="r-item"><div class="r-label">Account Number</div><div class="r-val">${extracted.accountNo}</div></div>` : ''}
+    ${extracted.micrCode ? `<div class="r-item r-full"><div class="r-label">Cheque Number (MICR)</div><div class="r-val micr-val">${extracted.micrCode}</div></div>` : ''}
   `;
 }
 
@@ -815,38 +821,119 @@ async function saveRecord() {
 
 // ── Records ──
 function renderRecords() {
-  const today = new Date(); today.setHours(0,0,0,0);
+  // Try to fetch from Google Sheets first, fall back to local
+  if (CONFIG.sheetCsvUrl && CONFIG.sheetCsvUrl !== 'YOUR_SHEET_CSV_URL') {
+    fetchFromSheet();
+  } else {
+    renderRecordsFromData(records);
+  }
+}
+
+async function fetchFromSheet() {
   const body = document.getElementById('records-body');
+  body.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:28px;color:var(--muted)">
+    <div style="font-size:20px;margin-bottom:6px">⟳</div>Loading from Google Sheets…</td></tr>`;
+
+  const syncLabel = document.getElementById('records-sync-label');
+  try {
+    // Fetch published sheet as CSV
+    const res = await fetch(CONFIG.sheetCsvUrl + '&t=' + Date.now()); // cache-bust
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const csv  = await res.text();
+    const rows = parseCSV(csv);
+    if (rows.length < 2) { renderRecordsFromData(records); return; }
+
+    // Map CSV rows to record objects (skip header row 0)
+    // Sheet columns: Vendor,Amount,Cheque Date,Reminder Date,Account No,Bank,MICR Code,Status,Saved At
+    const sheetRecords = rows.slice(1).filter(r => r[0]).map(r => ({
+      vendor:       r[0] || '',
+      amount:       r[1] || '',
+      chequeDate:   r[2] || '',
+      reminderDate: r[3] || '',
+      accountNo:    r[4] || '',
+      bankName:     r[5] || '',
+      micrCode:     r[6] || '',
+      status:       r[7] || 'Pending',
+      savedAt:      r[8] || '',
+    }));
+
+    renderRecordsFromData(sheetRecords);
+    if (syncLabel) syncLabel.textContent = 'Synced from Google Sheets · ' + new Date().toLocaleTimeString();
+    // Update local cache too
+    records = sheetRecords;
+    localStorage.setItem('ct_records', JSON.stringify(records));
+  } catch(err) {
+    console.warn('Sheet fetch failed, using local:', err.message);
+    if (syncLabel) syncLabel.textContent = 'Showing local records (Sheets unavailable)';
+    renderRecordsFromData(records);
+  }
+}
+
+function parseCSV(csv) {
+  // Handle quoted fields, commas inside quotes, newlines
+  const rows = [];
+  let row = [], field = '', inQ = false;
+  for (let i = 0; i < csv.length; i++) {
+    const c = csv[i];
+    if (inQ) {
+      if (c === '"' && csv[i+1] === '"') { field += '"'; i++; }
+      else if (c === '"') inQ = false;
+      else field += c;
+    } else {
+      if (c === '"') { inQ = true; }
+      else if (c === ',') { row.push(field.trim()); field = ''; }
+      else if (c === '\n' || (c === '\r' && csv[i+1] === '\n')) {
+        if (c === '\r') i++;
+        row.push(field.trim()); rows.push(row);
+        row = []; field = '';
+      } else field += c;
+    }
+  }
+  if (field || row.length) { row.push(field.trim()); if(row.some(Boolean)) rows.push(row); }
+  return rows;
+}
+
+function renderRecordsFromData(data) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const body  = document.getElementById('records-body');
   let week = 0, over = 0;
-  if (!records.length) {
-    body.innerHTML = '<tr><td colspan="7"><div class="empty"><div class="empty-icon">📋</div><div class="empty-text">No cheques yet</div></div></td></tr>';
+
+  if (!data.length) {
+    body.innerHTML = `<tr><td colspan="7"><div class="empty"><div class="empty-icon">📋</div><div class="empty-text">No cheques yet</div></div></td></tr>`;
     document.getElementById('s-total').textContent = 0;
-    document.getElementById('s-week').textContent = 0;
-    document.getElementById('s-over').textContent = 0;
+    document.getElementById('s-week').textContent  = 0;
+    document.getElementById('s-over').textContent  = 0;
     return;
   }
-  body.innerHTML = records.map((r,i) => {
-    const due = new Date(r.chequeDate); due.setHours(0,0,0,0);
+
+  body.innerHTML = data.map((r, i) => {
+    const due  = new Date(r.chequeDate); due.setHours(0,0,0,0);
     const diff = Math.ceil((due - today) / 86400000);
     if (diff < 0) over++;
     if (diff >= 0 && diff <= 7) week++;
     const bc = diff < 0 ? 'badge-red' : diff <= 2 ? 'badge-amber' : 'badge-green';
     const bl = diff < 0 ? 'Overdue' : diff === 0 ? 'Today' : `${diff}d`;
-    const sb = diff < 0 ? '<span class="badge badge-red">Overdue</span>' : diff <= 2 ? '<span class="badge badge-amber">Due soon</span>' : '<span class="badge badge-green">Upcoming</span>';
+    const sb = diff < 0
+      ? '<span class="badge badge-red">Overdue</span>'
+      : diff <= 2
+        ? '<span class="badge badge-amber">Due soon</span>'
+        : '<span class="badge badge-green">Upcoming</span>';
     return `<tr>
-      <td><strong>${r.vendor||'—'}</strong></td>
+      <td><strong>${r.vendor||'—'}</strong><br><span style="font-size:11px;color:var(--muted)">${r.bankName||''}</span></td>
       <td class="mono">₹${r.amount||'—'}</td>
       <td class="mono">${r.chequeDate||'—'}</td>
-      <td class="mono" style="color:var(--accent);letter-spacing:2px">${r.micrCode||'—'}</td>
-      <td><span class="badge ${bc}">${bl}</span></td>
+      <td class="mono" style="color:var(--accent);font-weight:600;letter-spacing:1px">${r.micrCode||'—'}</td>
+      <td class="mono" style="color:var(--ink2)">${r.accountNo||'—'}</td>
       <td>${sb}</td>
       <td><button class="btn btn-ghost btn-sm" onclick="deleteRecord(${i})" style="padding:4px 10px;font-size:11px">✕</button></td>
     </tr>`;
   }).join('');
-  document.getElementById('s-total').textContent = records.length;
-  document.getElementById('s-week').textContent = week;
-  document.getElementById('s-over').textContent = over;
+
+  document.getElementById('s-total').textContent = data.length;
+  document.getElementById('s-week').textContent  = week;
+  document.getElementById('s-over').textContent  = over;
 }
+
 
 function deleteRecord(i) {
   if (!confirm('Delete this record?')) return;
